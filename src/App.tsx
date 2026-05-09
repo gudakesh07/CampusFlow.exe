@@ -15,7 +15,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import { ThemeProvider } from "./components/theme-provider";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ClassProvider } from "./contexts/ClassContext";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/Sonner";
 
 export default function App() {
   return (
