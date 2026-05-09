@@ -1,0 +1,60 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    
+    function isValidId(id) { 
+        return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if request.auth.uid == userId;
+    }
+
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == resource.data.facultyId;
+      allow create: if isSignedIn();
+    }
+    
+    match /groups/{groupId} {
+      function isValidGroup(data) {
+        return data.keys().hasAll(['name', 'createdBy', 'createdAt']) &&
+               data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+               data.createdBy == request.auth.uid &&
+               data.createdAt is string; // using string ISO instead of timestamp for simplicity in prototype, or could restrict more
+      }
+      allow get: if isSignedIn() && isValidId(groupId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(groupId) && isValidGroup(incoming());
+      allow update: if isSignedIn() && isValidId(groupId) && (
+        // Allow anyone to join by appending to members (prototype)
+        incoming().diff(existing()).affectedKeys().hasOnly(['members', 'memberCount']) ||
+        // Only creator can update details
+        (request.auth.uid == existing().createdBy && incoming().diff(existing()).affectedKeys().hasOnly(['name']))
+      );
+      
+      match /messages/{messageId} {
+        function isValidMessage(data) {
+          return data.keys().hasAll(['text', 'senderId', 'senderName', 'timestamp']) &&
+                 data.text is string && data.text.size() <= 2000 &&
+                 data.senderId == request.auth.uid &&
+                 data.senderName is string && data.senderName.size() <= 100 &&
+                 data.timestamp is string; // simplify mapping
+        }
+        
+        allow read: if isSignedIn() && isValidId(groupId);
+        allow create: if isSignedIn() && isValidId(groupId) && isValidId(messageId) && isValidMessage(incoming());
+      }
+    }
+  }
+}

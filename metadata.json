@@ -1,0 +1,14 @@
+{
+  "name": "CampusFlow.exe",
+  "description": "A collaborative academic operating system for students, faculty, and administrators featuring AI-powered RAG for study materials, workload heatmaps, and a soothing distraction-free academic environment.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "Firebase",
+    "Gemini API",
+    "Full-stack Express"
+  ]
+}
