@@ -8,6 +8,19 @@ service cloud.firestore {
 
     function isSignedIn() { return request.auth != null; }
     
+    // Allow demo users (for testing without Firebase Auth)
+    function isDemoUser() {
+      return request.auth == null && (
+        (request.resource.data.createdBy in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001']) ||
+        (request.resource.data.senderId in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001']) ||
+        (resource.data.createdBy in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001'])
+      );
+    }
+    
+    function isAuthenticated() {
+      return isSignedIn() || isDemoUser();
+    }
+    
     function isValidId(id) { 
         return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
     }
@@ -16,44 +29,44 @@ service cloud.firestore {
     function existing() { return resource.data; }
 
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if request.auth.uid == userId;
+      allow read: if isAuthenticated();
+      allow write: if (isSignedIn() && request.auth.uid == userId) || (isDemoUser() && userId in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001']);
     }
 
     match /courses/{courseId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == resource.data.facultyId;
-      allow create: if isSignedIn();
+      allow read: if isAuthenticated();
+      allow write: if (isSignedIn() && request.auth.uid == resource.data.facultyId) || (isDemoUser() && resource.data.facultyId in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001']);
+      allow create: if isAuthenticated();
     }
     
     match /groups/{groupId} {
       function isValidGroup(data) {
         return data.keys().hasAll(['name', 'createdBy', 'createdAt']) &&
                data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
-               data.createdBy == request.auth.uid &&
+               (data.createdBy == request.auth.uid || data.createdBy in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001']) &&
                data.createdAt is string; // using string ISO instead of timestamp for simplicity in prototype, or could restrict more
       }
-      allow get: if isSignedIn() && isValidId(groupId);
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(groupId) && isValidGroup(incoming());
-      allow update: if isSignedIn() && isValidId(groupId) && (
+      allow get: if isAuthenticated() && isValidId(groupId);
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidId(groupId) && isValidGroup(incoming());
+      allow update: if isAuthenticated() && isValidId(groupId) && (
         // Allow anyone to join by appending to members (prototype)
         incoming().diff(existing()).affectedKeys().hasOnly(['members', 'memberCount']) ||
         // Only creator can update details
-        (request.auth.uid == existing().createdBy && incoming().diff(existing()).affectedKeys().hasOnly(['name']))
+        ((request.auth.uid == existing().createdBy || existing().createdBy in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001']) && incoming().diff(existing()).affectedKeys().hasOnly(['name']))
       );
       
       match /messages/{messageId} {
         function isValidMessage(data) {
           return data.keys().hasAll(['text', 'senderId', 'senderName', 'timestamp']) &&
                  data.text is string && data.text.size() <= 2000 &&
-                 data.senderId == request.auth.uid &&
+                 (data.senderId == request.auth.uid || data.senderId in ['demo-student-001', 'demo-faculty-001', 'demo-admin-001']) &&
                  data.senderName is string && data.senderName.size() <= 100 &&
                  data.timestamp is string; // simplify mapping
         }
         
-        allow read: if isSignedIn() && isValidId(groupId);
-        allow create: if isSignedIn() && isValidId(groupId) && isValidId(messageId) && isValidMessage(incoming());
+        allow read: if isAuthenticated() && isValidId(groupId);
+        allow create: if isAuthenticated() && isValidId(groupId) && isValidId(messageId) && isValidMessage(incoming());
       }
     }
   }

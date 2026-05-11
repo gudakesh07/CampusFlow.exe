@@ -16,6 +16,8 @@ import {
   X,
   Plus,
   Share2,
+  Edit,
+  Check,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -45,6 +47,56 @@ import { v4 as uuidv4 } from "uuid";
 
 const EMOJIS = ["👍", "🔥", "😂", "❤️", "🙌", "🤔", "👀", "✨"];
 
+// Demo storage for groups when Firestore isn't available
+const DEMO_GROUPS_STORAGE_KEY = "__campus_demo_groups";
+const DEMO_MESSAGES_STORAGE_KEY = "__campus_demo_messages";
+
+const getDemoGroups = (): any[] => {
+  const stored = localStorage.getItem(DEMO_GROUPS_STORAGE_KEY);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+};
+
+const saveDemoGroups = (groups: any[]) => {
+  localStorage.setItem(DEMO_GROUPS_STORAGE_KEY, JSON.stringify(groups));
+};
+
+const addDemoGroup = (group: any) => {
+  const groups = getDemoGroups();
+  groups.push(group);
+  saveDemoGroups(groups);
+  return group;
+};
+
+const getDemoMessages = (groupId: string): any[] => {
+  const stored = localStorage.getItem(`${DEMO_MESSAGES_STORAGE_KEY}_${groupId}`);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+};
+
+const saveDemoMessages = (groupId: string, messages: any[]) => {
+  localStorage.setItem(`${DEMO_MESSAGES_STORAGE_KEY}_${groupId}`, JSON.stringify(messages));
+};
+
+const addDemoMessage = (groupId: string, message: any) => {
+  const messages = getDemoMessages(groupId);
+  messages.push(message);
+  saveDemoMessages(groupId, messages);
+  return message;
+};
+
 export default function CommunicationHub() {
   const { groupId } = useParams();
   const navigate = useNavigate();
@@ -56,20 +108,49 @@ export default function CommunicationHub() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [useDemo, setUseDemo] = useState(false);
+  const [isEditingGroupName, setIsEditingGroupName] = useState(false);
+  const [editingGroupNameValue, setEditingGroupNameValue] = useState("");
 
   // Fetch groups
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, "groups"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const g = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setGroups(g);
 
-      // Select first group if none selected
-      if (!groupId && g.length > 0) {
-        navigate(`/dashboard/student/messages/${g[0].id}`, { replace: true });
-      }
-    });
+    // Try Firestore first, fall back to demo mode if it fails
+    const q = query(collection(db, "groups"));
+    let unsubscribeSnapshot: (() => void) | null = null;
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const g = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setGroups(g);
+        setUseDemo(false);
+
+        // Select first group if none selected
+        if (!groupId && g.length > 0) {
+          navigate(`/dashboard/student/messages/${g[0].id}`, { replace: true });
+        }
+      },
+      (error: any) => {
+        // If Firestore fails (permission denied), use demo mode with localStorage
+        if (error.code === "permission-denied") {
+          setUseDemo(true);
+          const demoGroups = getDemoGroups();
+          setGroups(demoGroups);
+
+          // Select first group if none selected
+          if (!groupId && demoGroups.length > 0) {
+            navigate(`/dashboard/student/messages/${demoGroups[0].id}`, {
+              replace: true,
+            });
+          }
+        } else {
+          console.error("Error fetching groups:", error);
+        }
+      },
+    );
+
     return () => unsubscribe();
   }, [user, groupId, navigate]);
 
@@ -105,18 +186,43 @@ export default function CommunicationHub() {
   // Fetch messages
   useEffect(() => {
     if (!groupId || !user) return;
-    const q = query(
-      collection(db, "groups", groupId, "messages"),
-      orderBy("timestamp", "asc"),
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      // Scroll to bottom
+    
+    if (useDemo) {
+      // Use demo mode (localStorage)
+      const demoMessages = getDemoMessages(groupId);
+      setMessages(demoMessages);
       setTimeout(
         () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
         100,
       );
-    });
+      return;
+    }
+    
+    const q = query(
+      collection(db, "groups", groupId, "messages"),
+      orderBy("timestamp", "asc"),
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        // Scroll to bottom
+        setTimeout(
+          () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
+          100,
+        );
+      },
+      (error: any) => {
+        // If Firestore fails, fall back to demo mode
+        if (error.code === "permission-denied") {
+          setUseDemo(true);
+          const demoMessages = getDemoMessages(groupId);
+          setMessages(demoMessages);
+        } else {
+          console.error("Error fetching messages:", error);
+        }
+      },
+    );
     return () => unsubscribe();
   }, [groupId, user]);
 
@@ -127,17 +233,45 @@ export default function CommunicationHub() {
     try {
       const newGroupId = uuidv4();
       const groupData = {
+        id: newGroupId,
         name: "New Friends Group",
         createdBy: user.uid,
         createdAt: new Date().toISOString(),
         members: [user.uid],
         memberCount: 1,
       };
-      await setDoc(doc(db, "groups", newGroupId), groupData);
+
+      if (useDemo) {
+        // Use demo mode (localStorage)
+        addDemoGroup(groupData);
+        setGroups([...groups, groupData]);
+      } else {
+        // Try Firestore
+        await setDoc(doc(db, "groups", newGroupId), groupData);
+      }
+
       navigate(`/dashboard/student/messages/${newGroupId}`);
       toast.success("New group created!");
     } catch (e: any) {
-      toast.error("Failed to create group: " + e.message);
+      // If Firestore fails, fall back to demo mode
+      if (e.code === "permission-denied" && !useDemo) {
+        setUseDemo(true);
+        const newGroupId = uuidv4();
+        const groupData = {
+          id: newGroupId,
+          name: "New Friends Group",
+          createdBy: user.uid,
+          createdAt: new Date().toISOString(),
+          members: [user.uid],
+          memberCount: 1,
+        };
+        addDemoGroup(groupData);
+        setGroups([...groups, groupData]);
+        navigate(`/dashboard/student/messages/${newGroupId}`);
+        toast.success("New group created (demo mode)!");
+      } else {
+        toast.error("Failed to create group: " + e.message);
+      }
     }
   };
 
@@ -146,12 +280,81 @@ export default function CommunicationHub() {
     toast.success("Group link copied to clipboard!");
   };
 
+  const handleEditGroupName = () => {
+    if (activeGroup) {
+      setEditingGroupNameValue(activeGroup.name);
+      setIsEditingGroupName(true);
+    }
+  };
+
+  const handleSaveGroupName = async () => {
+    if (!editingGroupNameValue.trim() || !activeGroup) {
+      toast.error("Group name cannot be empty");
+      return;
+    }
+
+    if (editingGroupNameValue === activeGroup.name) {
+      setIsEditingGroupName(false);
+      return;
+    }
+
+    try {
+      if (useDemo) {
+        // Update demo groups in localStorage
+        const demoGroups = getDemoGroups();
+        const groupIndex = demoGroups.findIndex((g) => g.id === activeGroup.id);
+        if (groupIndex !== -1) {
+          demoGroups[groupIndex].name = editingGroupNameValue;
+          saveDemoGroups(demoGroups);
+          setGroups(
+            groups.map((g) =>
+              g.id === activeGroup.id ? { ...g, name: editingGroupNameValue } : g
+            )
+          );
+        }
+      } else {
+        // Update Firestore
+        await updateDoc(doc(db, "groups", activeGroup.id), {
+          name: editingGroupNameValue,
+        });
+        setGroups(
+          groups.map((g) =>
+            g.id === activeGroup.id ? { ...g, name: editingGroupNameValue } : g
+          )
+        );
+      }
+      setIsEditingGroupName(false);
+      toast.success("Group name updated!");
+    } catch (e: any) {
+      // If Firestore fails, fall back to demo mode
+      if (e.code === "permission-denied" && !useDemo) {
+        setUseDemo(true);
+        const demoGroups = getDemoGroups();
+        const groupIndex = demoGroups.findIndex((g) => g.id === activeGroup.id);
+        if (groupIndex !== -1) {
+          demoGroups[groupIndex].name = editingGroupNameValue;
+          saveDemoGroups(demoGroups);
+          setGroups(
+            groups.map((g) =>
+              g.id === activeGroup.id ? { ...g, name: editingGroupNameValue } : g
+            )
+          );
+          setIsEditingGroupName(false);
+          toast.success("Group name updated (demo mode)!");
+        }
+      } else {
+        toast.error("Failed to update group name: " + e.message);
+      }
+    }
+  };
+
   const handleSendMessage = async () => {
     if ((!inputValue.trim() && !selectedImage) || !user || !groupId) return;
 
     try {
       const messageId = uuidv4();
       const messageData = {
+        id: messageId,
         text: inputValue,
         senderId: user.uid,
         senderName: user.displayName || "Student",
@@ -159,15 +362,41 @@ export default function CommunicationHub() {
         imageUrl: selectedImage || "",
       };
 
-      await setDoc(
-        doc(db, "groups", groupId, "messages", messageId),
-        messageData,
-      );
+      if (useDemo) {
+        // Use demo mode (localStorage)
+        addDemoMessage(groupId, messageData);
+        setMessages([...messages, messageData]);
+      } else {
+        // Try Firestore first
+        await setDoc(
+          doc(db, "groups", groupId, "messages", messageId),
+          messageData,
+        );
+      }
 
       setInputValue("");
       setSelectedImage(null);
     } catch (e: any) {
-      toast.error("Failed to send message: " + e.message);
+      // If Firestore fails, fall back to demo mode
+      if (e.code === "permission-denied" && !useDemo) {
+        setUseDemo(true);
+        const messageId = uuidv4();
+        const messageData = {
+          id: messageId,
+          text: inputValue,
+          senderId: user.uid,
+          senderName: user.displayName || "Student",
+          timestamp: new Date().toISOString(),
+          imageUrl: selectedImage || "",
+        };
+        addDemoMessage(groupId, messageData);
+        setMessages([...messages, messageData]);
+        setInputValue("");
+        setSelectedImage(null);
+        toast.success("Message sent (demo mode)");
+      } else {
+        toast.error("Failed to send message: " + e.message);
+      }
     }
   };
 
@@ -274,17 +503,63 @@ export default function CommunicationHub() {
           {activeGroup ? (
             <>
               <div className="p-4 md:p-6 border-b bg-background/50 flex justify-between items-center backdrop-blur-md shrink-0">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 shadow-inner">
                     <Users className="w-6 h-6" />
                   </div>
-                  <div>
-                    <h2 className="text-xl font-display font-bold tracking-tight line-clamp-1">
-                      {activeGroup.name}
-                    </h2>
-                    <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
-                      General Discussion • {activeGroup.memberCount} Members
-                    </p>
+                  <div className="flex-1 min-w-0">
+                    {isEditingGroupName ? (
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          value={editingGroupNameValue}
+                          onChange={(e) => setEditingGroupNameValue(e.target.value)}
+                          className="rounded-lg h-9 text-lg font-bold"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleSaveGroupName();
+                            } else if (e.key === "Escape") {
+                              setIsEditingGroupName(false);
+                            }
+                          }}
+                        />
+                        <Button
+                          onClick={handleSaveGroupName}
+                          size="icon"
+                          className="rounded-lg h-9 w-9 shrink-0"
+                          variant="default"
+                        >
+                          <Check className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          onClick={() => setIsEditingGroupName(false)}
+                          size="icon"
+                          className="rounded-lg h-9 w-9 shrink-0"
+                          variant="outline"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-display font-bold tracking-tight line-clamp-1">
+                            {activeGroup.name}
+                          </h2>
+                          <Button
+                            onClick={handleEditGroupName}
+                            size="icon"
+                            variant="ghost"
+                            className="rounded-lg h-8 w-8 shrink-0 hover:bg-muted"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
+                          General Discussion • {activeGroup.memberCount} Members
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2 shrink-0">
