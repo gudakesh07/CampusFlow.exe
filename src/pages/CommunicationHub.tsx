@@ -75,7 +75,9 @@ const addDemoGroup = (group: any) => {
 };
 
 const getDemoMessages = (groupId: string): any[] => {
-  const stored = localStorage.getItem(`${DEMO_MESSAGES_STORAGE_KEY}_${groupId}`);
+  const stored = localStorage.getItem(
+    `${DEMO_MESSAGES_STORAGE_KEY}_${groupId}`,
+  );
   if (stored) {
     try {
       return JSON.parse(stored);
@@ -87,7 +89,10 @@ const getDemoMessages = (groupId: string): any[] => {
 };
 
 const saveDemoMessages = (groupId: string, messages: any[]) => {
-  localStorage.setItem(`${DEMO_MESSAGES_STORAGE_KEY}_${groupId}`, JSON.stringify(messages));
+  localStorage.setItem(
+    `${DEMO_MESSAGES_STORAGE_KEY}_${groupId}`,
+    JSON.stringify(messages),
+  );
 };
 
 const addDemoMessage = (groupId: string, message: any) => {
@@ -186,7 +191,7 @@ export default function CommunicationHub() {
   // Fetch messages
   useEffect(() => {
     if (!groupId || !user) return;
-    
+
     if (useDemo) {
       // Use demo mode (localStorage)
       const demoMessages = getDemoMessages(groupId);
@@ -197,7 +202,7 @@ export default function CommunicationHub() {
       );
       return;
     }
-    
+
     const q = query(
       collection(db, "groups", groupId, "messages"),
       orderBy("timestamp", "asc"),
@@ -205,7 +210,9 @@ export default function CommunicationHub() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setMessages(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+        );
         // Scroll to bottom
         setTimeout(
           () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
@@ -308,8 +315,10 @@ export default function CommunicationHub() {
           saveDemoGroups(demoGroups);
           setGroups(
             groups.map((g) =>
-              g.id === activeGroup.id ? { ...g, name: editingGroupNameValue } : g
-            )
+              g.id === activeGroup.id
+                ? { ...g, name: editingGroupNameValue }
+                : g,
+            ),
           );
         }
       } else {
@@ -319,8 +328,8 @@ export default function CommunicationHub() {
         });
         setGroups(
           groups.map((g) =>
-            g.id === activeGroup.id ? { ...g, name: editingGroupNameValue } : g
-          )
+            g.id === activeGroup.id ? { ...g, name: editingGroupNameValue } : g,
+          ),
         );
       }
       setIsEditingGroupName(false);
@@ -336,8 +345,10 @@ export default function CommunicationHub() {
           saveDemoGroups(demoGroups);
           setGroups(
             groups.map((g) =>
-              g.id === activeGroup.id ? { ...g, name: editingGroupNameValue } : g
-            )
+              g.id === activeGroup.id
+                ? { ...g, name: editingGroupNameValue }
+                : g,
+            ),
           );
           setIsEditingGroupName(false);
           toast.success("Group name updated (demo mode)!");
@@ -512,7 +523,9 @@ export default function CommunicationHub() {
                       <div className="flex gap-2 items-center">
                         <Input
                           value={editingGroupNameValue}
-                          onChange={(e) => setEditingGroupNameValue(e.target.value)}
+                          onChange={(e) =>
+                            setEditingGroupNameValue(e.target.value)
+                          }
                           className="rounded-lg h-9 text-lg font-bold"
                           autoFocus
                           onKeyDown={(e) => {

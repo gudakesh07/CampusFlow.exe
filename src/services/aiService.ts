@@ -33,3 +33,19 @@ export async function summarizeLectureNotes(context: string) {
   const data = await response.json();
   return data.response;
 }
+
+export async function analyzeCVWithAI(cvText: string) {
+  const response = await fetch("/api/analyze-cv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cvText }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to analyze CV");
+  }
+
+  const data = await response.json();
+  return data;
+}

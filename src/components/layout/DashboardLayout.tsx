@@ -14,6 +14,8 @@ import {
   Sparkles,
   Menu,
   ChevronRight,
+  FileText,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -102,6 +104,12 @@ export default function DashboardLayout({
         implemented: true,
       },
       {
+        icon: FileText,
+        label: "CV Analyzer",
+        path: "/dashboard/student/cv-analyzer",
+        implemented: true,
+      },
+      {
         icon: MessageSquare,
         label: "Messages",
         path: "/dashboard/student/messages",
@@ -125,6 +133,12 @@ export default function DashboardLayout({
         icon: Calendar,
         label: "Exam Planner",
         path: "/dashboard/faculty/exams",
+        implemented: true,
+      },
+      {
+        icon: HelpCircle,
+        label: "MCQ Exams",
+        path: "/dashboard/faculty/mcq-exams",
         implemented: true,
       },
       {
